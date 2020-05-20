@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
+using McMaster.NETCore.Plugins;
 using Microsoft.Extensions.Options;
 using Namotion.Reflection;
 using Saunter.AsyncApiSchema.v2;
@@ -22,15 +24,15 @@ namespace Saunter.Generation
             _schemaGenerator = schemaGenerator;
             _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
         }
-        
+
         public AsyncApiSchema.v2.AsyncApiDocument GetDocument()
         {
             var schemaRepository = new SchemaRepository();
 
             var asyncApiTypes = GetAsyncApiTypes();
-            
+
             var asyncApiSchema = _options.AsyncApi;
-            
+
             asyncApiSchema.Channels = GenerateChannels(asyncApiTypes, schemaRepository);
             asyncApiSchema.Components.Schemas = schemaRepository.Schemas;
 
@@ -56,10 +58,79 @@ namespace Saunter.Generation
 
             return asyncApiTypes;
         }
-        
-        
+
+        private TypeInfo[] GetAsyncApiTypesFromAssemblies()
+        {
+            var assemblyFilePaths = AssemblyFilePaths(_options.AssemblyDirectory, _options.AssemblyFileSearchPatterns);
+
+            var classesWithAsyncApiAttribute = new List<TypeInfo>();
+
+            foreach (var assemblyFile in assemblyFilePaths.Where(IsValidAssembly))
+            {
+                Assembly loadedAssembly;
+                var typesInAssembly = new List<Type>();
+                try
+                {
+                    var pluginLoader = PluginLoader.CreateFromAssemblyFile(
+                        assemblyFile: assemblyFile,
+                        sharedTypes: new[]
+                        {
+                            typeof(AsyncApiAttribute)
+                        }
+                    );
+                    loadedAssembly = pluginLoader.LoadAssemblyFromPath(assemblyFile);
+                }
+                catch (Exception)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    typesInAssembly.AddRange(loadedAssembly.GetTypes());
+                }
+                catch (ReflectionTypeLoadException e)
+                {
+                    if (e.Types != null)
+                    {
+                        typesInAssembly.AddRange(e.Types);
+                    }
+                }
+
+                classesWithAsyncApiAttribute.AddRange(typesInAssembly.Where(t => t != null && t.IsClass)
+                    .Select(type => type.GetTypeInfo())
+                    .Where(typeInfo => typeInfo.HasCustomAttribute<AsyncApiAttribute>()));
+            }
+
+            return classesWithAsyncApiAttribute.ToArray();
+        }
+
+        private static List<string> AssemblyFilePaths(string directory, List<string> searchPatterns)
+        {
+            var files = new List<string>();
+            foreach (var searchPattern in searchPatterns)
+            {
+                files.AddRange(Directory.GetFiles(path: directory, searchPattern));
+            }
+
+            return files;
+        }
+
+        public static bool IsValidAssembly(string assemblyFullPath)
+        {
+            try
+            {
+                AssemblyName.GetAssemblyName(assemblyFullPath);
+                return true;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
         /// <summary>
-        /// Generate the Channels section of an AsyncApi schema. 
+        /// Generate the Channels section of an AsyncApi schema.
         /// </summary>
         private Channels GenerateChannels(IEnumerable<TypeInfo> asyncApiTypes, ISchemaRepository schemaRepository)
         {
@@ -82,9 +153,9 @@ namespace Saunter.Generation
                     Parameters = mc.Channel.Parameters,
                     Publish = GenerateOperation(mc.Method, schemaRepository, OperationType.Publish),
                     Subscribe = GenerateOperation(mc.Method, schemaRepository, OperationType.Subscribe),
-                }; 
+                };
                 channels.Add(mc.Channel.Name, channelItem);
-                
+
                 var context = new ChannelItemFilterContext(mc.Method, schemaRepository, mc.Channel);
                 foreach (var filter in _options.ChannelItemFilters)
                 {
@@ -94,8 +165,6 @@ namespace Saunter.Generation
 
             return channels;
         }
-
-
 
         /// <summary>
         /// Generate the an operation of an AsyncApi Channel for the given method.

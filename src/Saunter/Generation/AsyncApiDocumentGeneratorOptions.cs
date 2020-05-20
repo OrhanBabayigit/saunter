@@ -21,6 +21,16 @@ namespace Saunter.Generation
         public IList<Type> AssemblyMarkerTypes { get; set; } = new List<Type>();
 
         /// <summary>
+        /// Directory which contains the assemblies to scan for Saunter attributes.
+        /// </summary>
+        public string AssemblyDirectory { get; set; }
+
+        /// <summary>
+        /// A list of search patterns that are used to select assemblies in AssemblyDirectory.
+        /// </summary>
+        public List<string> AssemblyFileSearchPatterns { get; set; } = new List<string>();
+
+        /// <summary>
         /// A function to select a schemaId for a type.
         /// </summary>
         public Func<Type, string> SchemaIdSelector { get; set; } = type => new CamelCaseNamingStrategy().GetPropertyName(type.Name, false);
@@ -28,8 +38,8 @@ namespace Saunter.Generation
         /// <summary>
         /// A function to select the name for a property.
         /// </summary>
-        public Func<PropertyInfo, string> PropertyNameSelector { get; set; } = prop => new CamelCaseNamingStrategy().GetPropertyName(prop.Name, false); 
-        
+        public Func<PropertyInfo, string> PropertyNameSelector { get; set; } = prop => new CamelCaseNamingStrategy().GetPropertyName(prop.Name, false);
+
         /// <summary>
         /// A list of filters that will be applied to the generated AsyncAPI document.
         /// </summary>
@@ -39,7 +49,7 @@ namespace Saunter.Generation
         /// A list of filters that will be applies to any generated channels.
         /// </summary>
         public IList<IChannelItemFilter> ChannelItemFilters { get; } = new List<IChannelItemFilter>();
-        
+
         /// <summary>
         /// A list of filters that will be applied to any generated Publish operations.
         /// </summary>
